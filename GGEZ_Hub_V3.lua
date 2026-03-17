@@ -24,7 +24,6 @@ end
 
 local gameId = game.PlaceId
 local gameName = game:GetService("MarketplaceService"):GetProductInfo(gameId).Name
-
 print("🎮 Game Detected: " .. gameName)
 if not string.find(string.lower(gameName), "rival") then
 	warn("⚠️ This script is designed for Rivals!")
@@ -41,18 +40,68 @@ local Config = {
 	KillCheck = true,
 	FOV = 200,
 	LockSpeed = 15,
-	NoShadows = false,
-	NoFog = false,
-	NoParticles = false,
-	LowGraphics = false,
-	NoDecorations = false,
+	FastMode = false,
 }
 
+-- [[ เก็บค่า Material เดิมของทุก Part ]]
+local OriginalMaterials = {}
 local OriginalLighting = {
 	GlobalShadows = Lighting.GlobalShadows,
 	FogEnd = Lighting.FogEnd,
 	FogStart = Lighting.FogStart,
 }
+
+local function SaveMaterials()
+	OriginalMaterials = {}
+	for _, obj in pairs(workspace:GetDescendants()) do
+		if obj:IsA("BasePart") or obj:IsA("MeshPart") or obj:IsA("UnionOperation") then
+			OriginalMaterials[obj] = {
+				Material = obj.Material,
+				CastShadow = obj.CastShadow,
+			}
+		end
+	end
+end
+
+local function ApplyFastMode()
+	-- ลบ Material → SmoothPlastic (เรียบ ไม่มี texture)
+	for _, obj in pairs(workspace:GetDescendants()) do
+		if obj:IsA("BasePart") or obj:IsA("MeshPart") or obj:IsA("UnionOperation") then
+			obj.Material = Enum.Material.SmoothPlastic
+			obj.CastShadow = false
+		end
+	end
+	-- ปิด Lighting extras
+	Lighting.GlobalShadows = false
+	Lighting.FogEnd = 100000
+	Lighting.FogStart = 99999
+	-- ปิด Particles
+	for _, obj in pairs(workspace:GetDescendants()) do
+		if obj:IsA("ParticleEmitter") or obj:IsA("Smoke") or obj:IsA("Fire") or obj:IsA("Sparkles") then
+			obj.Enabled = false
+		end
+	end
+	-- ลด Graphics
+	settings().Rendering.QualityLevel = 1
+	print("🚀 Fast Mode ON")
+end
+
+local function RemoveFastMode()
+	-- คืน Material เดิม
+	for obj, data in pairs(OriginalMaterials) do
+		if obj and obj.Parent then
+			obj.Material = data.Material
+			obj.CastShadow = data.CastShadow
+		end
+	end
+	-- คืน Lighting
+	Lighting.GlobalShadows = OriginalLighting.GlobalShadows
+	Lighting.FogEnd = OriginalLighting.FogEnd
+	Lighting.FogStart = OriginalLighting.FogStart
+	-- คืน Graphics
+	settings().Rendering.QualityLevel = Enum.QualityLevel.Automatic
+	print("🔄 Fast Mode OFF")
+end
 
 -- [[ Main UI ]]
 local ScreenGui = Instance.new("ScreenGui")
@@ -105,8 +154,8 @@ Instance.new("UICorner", Crosshair).CornerRadius = UDim.new(1, 0)
 
 -- Main Frame
 local MainFrame = Instance.new("Frame", ScreenGui)
-MainFrame.Size = UDim2.new(0, 380, 0, 640)
-MainFrame.Position = UDim2.new(0.5, -190, 0.5, -320)
+MainFrame.Size = UDim2.new(0, 380, 0, 620)
+MainFrame.Position = UDim2.new(0.5, -190, 0.5, -310)
 MainFrame.BackgroundColor3 = DARK
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
@@ -332,7 +381,105 @@ local function CreateSlider(name, key, min, max, default, icon)
 	frame.MouseLeave:Connect(function() Tween(frame,{BackgroundColor3=DARK2}) end)
 end
 
--- Build UI
+-- [[ Fast Mode Button (ปุ่มเดียว แบบ Blox Fruit) ]]
+local function CreateFastModeButton()
+	local frame = Instance.new("Frame", Container)
+	frame.Size = UDim2.new(0.95, 0, 0, 85)
+	frame.BackgroundColor3 = DARK2
+	Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 12)
+	local fs = Instance.new("UIStroke", frame)
+	fs.Color = Color3.fromRGB(50,50,50)
+	fs.Thickness = 1.5; fs.Transparency = 0.6
+
+	-- Icon
+	local il = Instance.new("TextLabel", frame)
+	il.Size = UDim2.new(0,45,0,45); il.Position = UDim2.new(0,12,0.5,-22.5)
+	il.Text = "🚀"; il.TextColor3 = Color3.fromRGB(150,150,150)
+	il.Font = Enum.Font.GothamBold; il.TextSize = 22
+	il.BackgroundColor3 = BLACK
+	Instance.new("UICorner", il).CornerRadius = UDim.new(0, 10)
+
+	-- Title
+	local lbl = Instance.new("TextLabel", frame)
+	lbl.Size = UDim2.new(1,-130,0,25); lbl.Position = UDim2.new(0,65,0,10)
+	lbl.Text = "Fast Mode"
+	lbl.TextColor3 = Color3.new(1,1,1)
+	lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 15
+	lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.BackgroundTransparency = 1
+
+	-- Desc
+	local dl = Instance.new("TextLabel", frame)
+	dl.Size = UDim2.new(1,-130,0,20); dl.Position = UDim2.new(0,65,0,35)
+	dl.Text = "ลบ Material ทั้งหมด (แนะนำมือถือ)"
+	dl.TextColor3 = Color3.fromRGB(120,120,120)
+	dl.Font = Enum.Font.Gotham; dl.TextSize = 11
+	dl.TextXAlignment = Enum.TextXAlignment.Left; dl.BackgroundTransparency = 1
+
+	-- ON Button
+	local onBtn = Instance.new("TextButton", frame)
+	onBtn.Size = UDim2.new(0, 55, 0, 30)
+	onBtn.Position = UDim2.new(1, -130, 1, -42)
+	onBtn.Text = "On"
+	onBtn.Font = Enum.Font.GothamBold
+	onBtn.TextSize = 14
+	onBtn.BackgroundColor3 = Color3.fromRGB(80,80,80)
+	onBtn.TextColor3 = Color3.new(1,1,1)
+	onBtn.BorderSizePixel = 0
+	Instance.new("UICorner", onBtn).CornerRadius = UDim.new(0, 8)
+
+	-- OFF Button
+	local offBtn = Instance.new("TextButton", frame)
+	offBtn.Size = UDim2.new(0, 55, 0, 30)
+	offBtn.Position = UDim2.new(1, -68, 1, -42)
+	offBtn.Text = "Off"
+	offBtn.Font = Enum.Font.GothamBold
+	offBtn.TextSize = 14
+	offBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+	offBtn.TextColor3 = Color3.new(1,1,1)
+	offBtn.BorderSizePixel = 0
+	Instance.new("UICorner", offBtn).CornerRadius = UDim.new(0, 8)
+
+	local function updateButtons()
+		if Config.FastMode then
+			-- ON active
+			onBtn.BackgroundColor3 = Color3.fromRGB(80,80,80)
+			onBtn.TextColor3 = Color3.new(1,1,1)
+			offBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
+			offBtn.TextColor3 = Color3.new(1,1,1)
+			Tween(fs, {Color = YELLOW})
+			Tween(il, {TextColor3 = YELLOW})
+		else
+			-- OFF active
+			onBtn.BackgroundColor3 = Color3.fromRGB(80,80,80)
+			onBtn.TextColor3 = Color3.fromRGB(150,150,150)
+			offBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
+			offBtn.TextColor3 = Color3.new(1,1,1)
+			Tween(fs, {Color = Color3.fromRGB(50,50,50)})
+			Tween(il, {TextColor3 = Color3.fromRGB(150,150,150)})
+		end
+	end
+
+	onBtn.MouseButton1Click:Connect(function()
+		if not Config.FastMode then
+			Config.FastMode = true
+			SaveMaterials()
+			ApplyFastMode()
+			updateButtons()
+		end
+	end)
+
+	offBtn.MouseButton1Click:Connect(function()
+		if Config.FastMode then
+			Config.FastMode = false
+			RemoveFastMode()
+			updateButtons()
+		end
+	end)
+
+	updateButtons()
+end
+
+-- [[ Build UI ]]
 AddCategory("VISUAL SETTINGS", "🎨")
 CreateSlider("FOV Circle", "FOV", 50, 500, Config.FOV, "⭕")
 CreateSlider("Lock Smoothness", "LockSpeed", 1, 50, Config.LockSpeed, "⚡")
@@ -344,11 +491,7 @@ CreateToggle("Team Check", "TeamCheck", "Ignore your teammates", "👥")
 AddCategory("VISUAL FEATURES", "👁️")
 CreateToggle("ESP Overlay", "ESP", "Highlight players through walls", "✨")
 AddCategory("FPS BOOST", "🚀")
-CreateToggle("No Shadows", "NoShadows", "ปิด Shadow ลด GPU load", "🌑")
-CreateToggle("No Fog", "NoFog", "ปิด Fog เห็นไกลขึ้น", "🌫️")
-CreateToggle("No Particles", "NoParticles", "ปิด Effect/ควัน/ไฟ", "✨")
-CreateToggle("Low Graphics", "LowGraphics", "ลด Quality ทุกอย่าง", "📉")
-CreateToggle("No Decorations", "NoDecorations", "ลบ Accessory ผู้เล่นอื่น", "🗑️")
+CreateFastModeButton()
 
 -- Draggable
 local dragging, dragInput, dragStart, startPos
@@ -386,7 +529,7 @@ ToggleBtn.MouseButton1Click:Connect(function()
 	MainFrame.Visible = not MainFrame.Visible
 	if MainFrame.Visible then
 		MainFrame.Size = UDim2.new(0,0,0,0)
-		Tween(MainFrame,{Size=UDim2.new(0,380,0,640)})
+		Tween(MainFrame,{Size=UDim2.new(0,380,0,620)})
 		Tween(BlurEffect,{Size=5})
 	else
 		Tween(MainFrame,{Size=UDim2.new(0,0,0,0)})
@@ -418,31 +561,6 @@ local function GetNearestPlayer()
 	return nearest
 end
 
--- FPS Boost
-RunService.Heartbeat:Connect(function()
-	Lighting.GlobalShadows = not Config.NoShadows and OriginalLighting.GlobalShadows or false
-	if Config.NoFog then Lighting.FogEnd=100000; Lighting.FogStart=99999
-	else Lighting.FogEnd=OriginalLighting.FogEnd; Lighting.FogStart=OriginalLighting.FogStart end
-	if Config.NoParticles then
-		for _,obj in pairs(workspace:GetDescendants()) do
-			if obj:IsA("ParticleEmitter") or obj:IsA("Smoke") or obj:IsA("Fire") or obj:IsA("Sparkles") then
-				obj.Enabled=false
-			end
-		end
-	end
-	if Config.LowGraphics then settings().Rendering.QualityLevel=1
-	else settings().Rendering.QualityLevel=Enum.QualityLevel.Automatic end
-	if Config.NoDecorations then
-		for _,player in pairs(Players:GetPlayers()) do
-			if player~=LocalPlayer and player.Character then
-				for _,obj in pairs(player.Character:GetDescendants()) do
-					if obj:IsA("Accessory") or obj:IsA("Hat") then obj:Destroy() end
-				end
-			end
-		end
-	end
-end)
-
 -- Main Loop
 local targetLocked=false; local lastUpdate=tick(); local playerCount=0
 RunService.RenderStepped:Connect(function()
@@ -454,12 +572,8 @@ RunService.RenderStepped:Connect(function()
 		for _,p in pairs(Players:GetPlayers()) do
 			if p~=LocalPlayer and p.Character and p.Character:FindFirstChildOfClass("Humanoid") then playerCount=playerCount+1 end
 		end
-		local boostCount=0
-		for _,k in pairs({"NoShadows","NoFog","NoParticles","LowGraphics","NoDecorations"}) do
-			if Config[k] then boostCount=boostCount+1 end
-		end
 		local st = Config.Aimbot and ("🎯 AIMBOT ACTIVE | 👥 "..playerCount.."\n"..(targetLocked and "🔒 LOCKED" or "🔍 SEARCHING...")) or ("⏸️ AIMBOT OFF | 👥 Players: "..playerCount)
-		if boostCount>0 then st=st.."\n🚀 FPS BOOST: "..boostCount.." active" end
+		if Config.FastMode then st=st.."\n🚀 FAST MODE ON" end
 		StatusLabel.Text=st
 	end
 	targetLocked=false
@@ -495,5 +609,5 @@ RunService.RenderStepped:Connect(function()
 end)
 
 print("✅ GGEZ Hub V3 Loaded!")
-print("⚔️ Combat | 👁️ ESP | 🚀 FPS Boost")
+print("⚔️ Combat | 👁️ ESP | 🚀 Fast Mode")
 print("🎮 Click GG button to open menu")
